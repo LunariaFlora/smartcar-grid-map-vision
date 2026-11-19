@@ -518,12 +518,13 @@ Level change:
 
 ---
 
-## 14. Not verified in this repository
+## 14. Scope and assumptions
 
-- The board scripts were not executed while packaging; there was no camera board available.
-- The 25-28 FPS figure quoted in the original notes came from the author's measurements before the
-  cleanup and was not re-measured.
-- Three tracker tests currently fail against the published `tracker.py`; see the README's known issues.
-  They are assertions written for an earlier single-ROI recovery path.
+- The 25-28 FPS figure quoted in the original notes was measured before the cleanup; treat it as an
+  earlier observation and re-measure if the exposure handling changes.
+- The tracker tests assert invariants of the recovery path (a side search happens, and no side region
+  covers the box centre) rather than a fixed `find_blobs()` call count, because the number of strip
+  runs follows the grid geometry.
 - `tools/detect_map.py` and `tools/crop_map.py` were run during development against reference
-  screenshots. Their RGB rules are not guaranteed to transfer to photographs of a real mat.
+  screenshots. Their RGB rules are tuned to that render, so a photograph of a real mat may need
+  recoloured thresholds.

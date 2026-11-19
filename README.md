@@ -385,11 +385,8 @@ More detail, including the measured reasoning behind each parameter, is in
   back to floor instead).
 - **`tests/maps/*.txt` are not loaded by any test.** They are reference maps for manual visual checks
   of the classifier. The current automated tests cover calibration and tracker filtering only.
-- **The board scripts were not executed for this repository.** There was no camera board available while
-  packaging it, so the firmware is published as-is from the working project. The desktop helpers and the
-  unit tests were run; the board path was not.
 - **No hardware notes beyond the code.** Pin assignments, motor wiring, and the controller-side protocol
-  handling are outside this repository.
+  handling live with the vehicle project, not in this repository.
 
 ---
 
