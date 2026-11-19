@@ -274,7 +274,7 @@ python -m unittest discover -s tests -v
 The calibration tests do not import `main.py` (that would need the board firmware). They parse it with
 `ast`, execute only the constant and function definitions, and drive `detect_grid_once()` with synthetic
 frames, which is why calibration logic can be tested on a desktop at all. The tracker tests use fake
-image and blob objects. 14 of the 17 tests pass; the three failures are listed under known issues.
+image and blob objects. All 17 tests pass.
 
 ---
 
@@ -363,11 +363,12 @@ More detail, including the measured reasoning behind each parameter, is in
   one bad frame from a sustained loss.
 - **Unknown cells become floor.** The classifier's final fallback is floor, which avoids deadlocks but
   can silently erase a weakly-lit object instead of reporting it.
-- **Three tests currently fail.** `test_merged_blob_returns_real_side_blob_center` and
-  `test_square_blob_touching_box_core_also_recovers` expect exactly two `find_blobs()` calls, but the
-  current box-side recovery searches several overlapping strips and makes four; `test_above_box_crops_at_box_top`
-  is off by one pixel against the current crop bound. These assertions predate the multi-strip recovery
-  change and need review - they are kept in the repository rather than deleted so the intent is not lost.
+- **Two assertions were replaced with invariants.** `test_merged_blob_returns_real_side_blob_center` and
+  `test_square_blob_touching_box_core_also_recovers` used to require exactly two `find_blobs()` calls,
+  but box-side recovery now searches one region per allowed strip run, so the count follows the grid
+  geometry. They now assert that a side search happened and that no side region contains the box centre.
+  `test_above_box_crops_at_box_top` allows one pixel of slack, because ROI bounds are rounded outward by
+  half a pixel. All 17 tests pass; behaviour was not changed.
 - **`tools/crop_map.py` hard-codes its input file name** (`map_crop.png`) and must be run from a folder
   that contains it.
 - **The two desktop tools disagree about lattice orientation, and neither matches the screenshots.**
