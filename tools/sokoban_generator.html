@@ -1,0 +1,1580 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>推箱子地图生成器</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f6;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #65758a;
+      --line: #d7dee8;
+      --wall: #5f6978;
+      --floor: #4e84d9;
+      --goal: #d24adf;
+      --box: #c9a026;
+      --bomb: #e6465f;
+      --car: #1a9f7a;
+      --accent: #2563eb;
+      --accent-2: #0f766e;
+      --warn: #b45309;
+      font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    main {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 24px 0 32px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 28px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .subhead {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(320px, 430px) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+    }
+
+    .controls {
+      padding: 16px;
+    }
+
+    .control-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.25;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 9px 10px;
+      font: inherit;
+      color: var(--ink);
+      background: #fbfdff;
+    }
+
+    input[type="range"] {
+      padding: 0;
+      accent-color: var(--accent);
+    }
+
+    .full {
+      grid-column: 1 / -1;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 6px;
+      padding: 9px 13px;
+      font: inherit;
+      font-weight: 650;
+      color: #ffffff;
+      background: var(--accent);
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: var(--accent-2);
+    }
+
+    button.ghost {
+      color: var(--ink);
+      background: #e8eef6;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    select:focus-visible {
+      outline: 3px solid rgba(37, 99, 235, 0.25);
+      outline-offset: 1px;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      min-height: 42px;
+      border-radius: 6px;
+      background: #f7f9fc;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .status.good {
+      color: #0f766e;
+      border-color: #99f6e4;
+      background: #f0fdfa;
+    }
+
+    .status.warn {
+      color: var(--warn);
+      border-color: #fed7aa;
+      background: #fff7ed;
+    }
+
+    .board-panel {
+      padding: 16px;
+    }
+
+    .board-shell {
+      width: min(100%, 720px);
+      margin: 0 auto;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(16, 1fr);
+      aspect-ratio: 16 / 12;
+      width: 100%;
+      border: 4px solid #202938;
+      background: #202938;
+      gap: 2px;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .cell {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-width: 0;
+      min-height: 0;
+      color: rgba(255, 255, 255, 0.88);
+      font-weight: 800;
+      font-size: clamp(10px, 2.2vw, 18px);
+      line-height: 1;
+      user-select: none;
+    }
+
+    .cell.wall {
+      background: linear-gradient(135deg, #737d8d, var(--wall));
+    }
+
+    .cell.floor {
+      background: var(--floor);
+    }
+
+    .cell.goal {
+      background: var(--floor);
+    }
+
+    .cell.goal::after {
+      content: "";
+      width: 42%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: var(--goal);
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.32);
+    }
+
+    .cell.box {
+      background: var(--floor);
+    }
+
+    .cell.box::after {
+      content: "";
+      width: 70%;
+      aspect-ratio: 1;
+      border-radius: 4px;
+      background: linear-gradient(135deg, #e2c156, var(--box));
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22);
+    }
+
+    .cell.bomb {
+      background: var(--floor);
+    }
+
+    .cell.bomb::after {
+      content: "";
+      width: 58%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: var(--bomb);
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.25);
+    }
+
+    .cell.car {
+      background: var(--floor);
+    }
+
+    .cell.car::after {
+      content: "";
+      width: 66%;
+      aspect-ratio: 1;
+      border-radius: 5px;
+      background: var(--car);
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.26);
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .chip {
+      width: 15px;
+      height: 15px;
+      border-radius: 3px;
+      display: inline-block;
+    }
+
+    .output {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    textarea {
+      min-height: 198px;
+      resize: vertical;
+      font-family: Consolas, "Courier New", monospace;
+      line-height: 1.25;
+      letter-spacing: 1px;
+      white-space: pre;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .metric {
+      padding: 10px;
+      border-radius: 6px;
+      background: #f7f9fc;
+      border: 1px solid var(--line);
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1.1;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 900px) {
+      main {
+        width: min(100vw - 20px, 680px);
+        padding-top: 16px;
+      }
+
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .metrics {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 520px) {
+      .control-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .metrics {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>推箱子地图生成器</h1>
+    <p class="subhead">参考 AutoGenerateSokobanLevel 的流程：随机增量添加墙、箱子和目标点，每次用求解器验证；无解就回滚，有解就保存，并导出板端识别程序使用的 12×16 字符地图。</p>
+
+    <div class="layout">
+      <section class="panel controls" aria-label="地图生成参数">
+        <div class="control-grid">
+          <label>
+            随机种子
+            <input id="seedInput" type="number" min="1" max="2147483646" step="1">
+          </label>
+
+          <label>
+            箱子数量
+            <select id="boxCount">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3" selected>3</option>
+              <option value="4">4</option>
+            </select>
+          </label>
+
+          <label>
+            生成迭代次数
+            <input id="pullSteps" type="range" min="10" max="90" value="38">
+          </label>
+
+          <label>
+            墙壁生成概率
+            <input id="extraCarve" type="range" min="0" max="35" value="12">
+          </label>
+
+          <label>
+            最少正向推动数
+            <input id="minPushes" type="number" min="1" max="120" value="8">
+          </label>
+
+          <label>
+            炸弹数量
+            <input id="bombCount" type="number" min="0" max="12" value="0">
+          </label>
+        </div>
+
+        <div class="button-row">
+          <button id="generateBtn" type="button">生成地图</button>
+          <button id="validateBtn" class="secondary" type="button">重新验证</button>
+          <button id="copyMapBtn" class="ghost" type="button">复制地图</button>
+          <button id="copyFlatBtn" class="ghost" type="button">复制一行</button>
+        </div>
+
+        <div id="status" class="status" role="status">等待生成。</div>
+
+        <div class="metrics" aria-label="生成结果统计">
+          <div class="metric"><strong id="metricPushes">0</strong><span>最少推动</span></div>
+          <div class="metric"><strong id="metricPulls">0</strong><span>有效保存</span></div>
+          <div class="metric"><strong id="metricFloor">0</strong><span>可走格</span></div>
+          <div class="metric"><strong id="metricSeed">0</strong><span>当前种子</span></div>
+        </div>
+
+        <div class="output">
+          <label>
+            12×16 字符地图
+            <textarea id="mapText" spellcheck="false"></textarea>
+          </label>
+          <label>
+            串口一行格式
+            <input id="flatText" type="text" readonly>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel board-panel" aria-label="地图预览">
+        <div class="board-shell">
+          <div id="board" class="board"></div>
+          <div class="legend" aria-label="图例">
+            <span><i class="chip" style="background: var(--wall)"></i># 墙</span>
+            <span><i class="chip" style="background: var(--floor)"></i>- 空地</span>
+            <span><i class="chip" style="background: var(--goal)"></i>. 目标点</span>
+            <span><i class="chip" style="background: var(--box)"></i>$ 箱子</span>
+            <span><i class="chip" style="background: var(--bomb)"></i>* 炸弹</span>
+            <span><i class="chip" style="background: var(--car)"></i>@ 小车</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const ROWS = 12;
+    const COLS = 16;
+    const DIRS = [
+      { dr: -1, dc: 0, name: "U" },
+      { dr: 1, dc: 0, name: "D" },
+      { dr: 0, dc: -1, name: "L" },
+      { dr: 0, dc: 1, name: "R" }
+    ];
+
+    const boardEl = document.getElementById("board");
+    const seedInput = document.getElementById("seedInput");
+    const boxCountEl = document.getElementById("boxCount");
+    const pullStepsEl = document.getElementById("pullSteps");
+    const extraCarveEl = document.getElementById("extraCarve");
+    const minPushesEl = document.getElementById("minPushes");
+    const bombCountEl = document.getElementById("bombCount");
+    const mapTextEl = document.getElementById("mapText");
+    const flatTextEl = document.getElementById("flatText");
+    const statusEl = document.getElementById("status");
+    const metricPushes = document.getElementById("metricPushes");
+    const metricPulls = document.getElementById("metricPulls");
+    const metricFloor = document.getElementById("metricFloor");
+    const metricSeed = document.getElementById("metricSeed");
+
+    let current = null;
+
+    function randomSeed() {
+      return Math.floor(Math.random() * 2147483645) + 1;
+    }
+
+    function makeRng(seed) {
+      let state = seed % 2147483647;
+      if (state <= 0) state += 2147483646;
+      return function rng() {
+        state = (state * 16807) % 2147483647;
+        return (state - 1) / 2147483646;
+      };
+    }
+
+    function key(r, c) {
+      return r + "," + c;
+    }
+
+    function parseKey(value) {
+      const parts = value.split(",");
+      return { r: Number(parts[0]), c: Number(parts[1]) };
+    }
+
+    function inBounds(r, c) {
+      return r > 0 && r < ROWS - 1 && c > 0 && c < COLS - 1;
+    }
+
+    function shuffle(items, rng) {
+      const copy = items.slice();
+      for (let i = copy.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(rng() * (i + 1));
+        const tmp = copy[i];
+        copy[i] = copy[j];
+        copy[j] = tmp;
+      }
+      return copy;
+    }
+
+    function createEmptyGrid(fill = "#") {
+      return Array.from({ length: ROWS }, () => Array(COLS).fill(fill));
+    }
+
+    function allInteriorCells() {
+      const cells = [];
+      for (let r = 1; r < ROWS - 1; r += 1) {
+        for (let c = 1; c < COLS - 1; c += 1) {
+          cells.push({ r, c });
+        }
+      }
+      return cells;
+    }
+
+    function farEnough(cell, chosen, minDistance) {
+      return chosen.every((other) => Math.abs(cell.r - other.r) + Math.abs(cell.c - other.c) >= minDistance);
+    }
+
+    function chooseGoals(count, rng) {
+      const cells = shuffle(allInteriorCells(), rng)
+        .filter((cell) => cell.r >= 2 && cell.r <= ROWS - 3 && cell.c >= 2 && cell.c <= COLS - 3);
+      const goals = [];
+      for (const cell of cells) {
+        if (farEnough(cell, goals, 3)) {
+          goals.push(cell);
+          if (goals.length === count) break;
+        }
+      }
+      return goals.length === count ? goals : cells.slice(0, count);
+    }
+
+    function buildGeneratedLevel(options) {
+      const rng = makeRng(options.seed);
+      const grid = createEmptyGrid("#");
+      const goals = chooseGoals(options.boxCount, rng);
+      const boxes = goals.map((cell) => ({ r: cell.r, c: cell.c }));
+      const goalSet = new Set(goals.map((cell) => key(cell.r, cell.c)));
+      const floor = new Set();
+      let player = goals[0] ? { r: goals[0].r, c: goals[0].c } : { r: 1, c: 1 };
+      let pullCount = 0;
+
+      function carve(r, c) {
+        if (inBounds(r, c)) {
+          floor.add(key(r, c));
+          grid[r][c] = "-";
+        }
+      }
+
+      function boxSet(skipIndex = -1) {
+        const set = new Set();
+        boxes.forEach((box, index) => {
+          if (index !== skipIndex) set.add(key(box.r, box.c));
+        });
+        return set;
+      }
+
+      goals.forEach((goal) => carve(goal.r, goal.c));
+
+      for (let step = 0; step < options.pullSteps; step += 1) {
+        const boxOrder = shuffle(boxes.map((_, index) => index), rng);
+        let moved = false;
+
+        for (const boxIndex of boxOrder) {
+          const dirs = shuffle(DIRS, rng);
+          for (const dir of dirs) {
+            const box = boxes[boxIndex];
+            const puller = { r: box.r + dir.dr, c: box.c + dir.dc };
+            const playerDest = { r: puller.r + dir.dr, c: puller.c + dir.dc };
+
+            if (!inBounds(puller.r, puller.c) || !inBounds(playerDest.r, playerDest.c)) continue;
+
+            const occupied = boxSet(boxIndex);
+            if (occupied.has(key(puller.r, puller.c)) || occupied.has(key(playerDest.r, playerDest.c))) continue;
+
+            carve(box.r, box.c);
+            carve(puller.r, puller.c);
+            carve(playerDest.r, playerDest.c);
+            boxes[boxIndex] = puller;
+            player = playerDest;
+            pullCount += 1;
+            moved = true;
+            break;
+          }
+          if (moved) break;
+        }
+      }
+
+      addExtraFloor(grid, floor, boxes, goals, options.extraCarve, rng);
+      const bombSet = placeBombs(grid, floor, boxes, goals, player, options.bombCount, rng);
+
+      for (let r = 0; r < ROWS; r += 1) {
+        for (let c = 0; c < COLS; c += 1) {
+          if (r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1) {
+            grid[r][c] = "#";
+          } else if (!floor.has(key(r, c))) {
+            grid[r][c] = "#";
+          } else {
+            grid[r][c] = "-";
+          }
+        }
+      }
+
+      goalSet.forEach((value) => {
+        const cell = parseKey(value);
+        grid[cell.r][cell.c] = ".";
+      });
+      bombSet.forEach((value) => {
+        const cell = parseKey(value);
+        if (grid[cell.r][cell.c] === "-") grid[cell.r][cell.c] = "*";
+      });
+      boxes.forEach((box) => {
+        grid[box.r][box.c] = "$";
+      });
+      grid[player.r][player.c] = "@";
+
+      return {
+        grid,
+        seed: options.seed,
+        goals,
+        boxes,
+        player,
+        pullCount,
+        floorCount: floor.size
+      };
+    }
+
+    function addExtraFloor(grid, floor, boxes, goals, percent, rng) {
+      const protectedCells = new Set([
+        ...boxes.map((box) => key(box.r, box.c)),
+        ...goals.map((goal) => key(goal.r, goal.c))
+      ]);
+      const rounds = Math.floor((ROWS - 2) * (COLS - 2) * percent / 100);
+
+      for (let i = 0; i < rounds; i += 1) {
+        const edge = shuffle(Array.from(floor), rng);
+        let carved = false;
+        for (const value of edge) {
+          const base = parseKey(value);
+          const dirs = shuffle(DIRS, rng);
+          for (const dir of dirs) {
+            const nr = base.r + dir.dr;
+            const nc = base.c + dir.dc;
+            const nextKey = key(nr, nc);
+            if (!inBounds(nr, nc) || floor.has(nextKey) || protectedCells.has(nextKey)) continue;
+            floor.add(nextKey);
+            grid[nr][nc] = "-";
+            carved = true;
+            break;
+          }
+          if (carved) break;
+        }
+      }
+    }
+
+    function placeBombs(grid, floor, boxes, goals, player, requested, rng) {
+      const blocked = new Set([
+        ...boxes.map((box) => key(box.r, box.c)),
+        ...goals.map((goal) => key(goal.r, goal.c)),
+        key(player.r, player.c)
+      ]);
+      const candidates = shuffle(Array.from(floor), rng)
+        .filter((value) => !blocked.has(value));
+      const bombs = new Set();
+
+      for (const value of candidates) {
+        const cell = parseKey(value);
+        const aroundGoal = goals.some((goal) => Math.abs(goal.r - cell.r) + Math.abs(goal.c - cell.c) <= 1);
+        if (aroundGoal) continue;
+        bombs.add(value);
+        if (bombs.size >= requested) break;
+      }
+
+      return bombs;
+    }
+
+    function serializeGrid(grid) {
+      return grid.map((row) => row.join("")).join("\n");
+    }
+
+    function flatGrid(grid) {
+      return grid.map((row) => row.join("")).join("");
+    }
+
+    function getStatics(grid) {
+      const walls = new Set();
+      const goals = new Set();
+      const boxes = [];
+      let player = null;
+
+      for (let r = 0; r < ROWS; r += 1) {
+        for (let c = 0; c < COLS; c += 1) {
+          const cell = grid[r][c];
+          if (cell === "#" || cell === "*") walls.add(key(r, c));
+          if (cell === ".") goals.add(key(r, c));
+          if (cell === "$") boxes.push({ r, c });
+          if (cell === "@") player = { r, c };
+        }
+      }
+
+      return { walls, goals, boxes, player };
+    }
+
+    function normalizedBoxes(boxes) {
+      return boxes
+        .map((box) => key(box.r, box.c))
+        .sort()
+        .join(";");
+    }
+
+    function solveLevel(grid, maxStates = 30000) {
+      const statics = getStatics(grid);
+      if (!statics.player || statics.boxes.length === 0 || statics.goals.size < statics.boxes.length) {
+        return { solved: false, pushes: 0, states: 0, reason: "地图缺少小车、箱子或目标点。" };
+      }
+
+      const startBoxes = normalizedBoxes(statics.boxes);
+      const start = {
+        player: statics.player,
+        boxes: statics.boxes,
+        pushes: 0
+      };
+      const queue = [start];
+      const visited = new Set([key(start.player.r, start.player.c) + "|" + startBoxes]);
+      let head = 0;
+
+      while (head < queue.length && visited.size <= maxStates) {
+        const state = queue[head];
+        head += 1;
+
+        const boxKeys = new Set(state.boxes.map((box) => key(box.r, box.c)));
+        if (state.boxes.every((box) => statics.goals.has(key(box.r, box.c)))) {
+          return { solved: true, pushes: state.pushes, states: visited.size, reason: "可解。" };
+        }
+
+        const reachable = reachableCells(state.player, statics.walls, boxKeys);
+        for (let i = 0; i < state.boxes.length; i += 1) {
+          const box = state.boxes[i];
+          for (const dir of DIRS) {
+            const stand = { r: box.r - dir.dr, c: box.c - dir.dc };
+            const target = { r: box.r + dir.dr, c: box.c + dir.dc };
+            const standKey = key(stand.r, stand.c);
+            const targetKey = key(target.r, target.c);
+            if (!reachable.has(standKey)) continue;
+            if (!inBounds(target.r, target.c) || statics.walls.has(targetKey) || boxKeys.has(targetKey)) continue;
+
+            const nextBoxes = state.boxes.map((item, index) => index === i ? target : item);
+            const boxesKey = normalizedBoxes(nextBoxes);
+            const playerKey = key(box.r, box.c);
+            const stateKey = playerKey + "|" + boxesKey;
+            if (visited.has(stateKey)) continue;
+
+            visited.add(stateKey);
+            queue.push({
+              player: { r: box.r, c: box.c },
+              boxes: nextBoxes,
+              pushes: state.pushes + 1
+            });
+          }
+        }
+      }
+
+      return {
+        solved: false,
+        pushes: 0,
+        states: visited.size,
+        reason: visited.size > maxStates ? "搜索上限内未完成验证。" : "未找到解。"
+      };
+    }
+
+    function reachableCells(start, walls, boxes) {
+      const seen = new Set();
+      const queue = [start];
+      seen.add(key(start.r, start.c));
+      let head = 0;
+
+      while (head < queue.length) {
+        const currentCell = queue[head];
+        head += 1;
+
+        for (const dir of DIRS) {
+          const nr = currentCell.r + dir.dr;
+          const nc = currentCell.c + dir.dc;
+          const value = key(nr, nc);
+          if (!inBounds(nr, nc) || seen.has(value) || walls.has(value) || boxes.has(value)) continue;
+          seen.add(value);
+          queue.push({ r: nr, c: nc });
+        }
+      }
+
+      return seen;
+    }
+
+    function renderBoard(grid) {
+      const fragment = document.createDocumentFragment();
+      for (let r = 0; r < ROWS; r += 1) {
+        for (let c = 0; c < COLS; c += 1) {
+          const cell = document.createElement("div");
+          const tag = grid[r][c];
+          cell.className = "cell " + classForTag(tag);
+          cell.title = r + "," + c + " " + tag;
+          fragment.appendChild(cell);
+        }
+      }
+      boardEl.replaceChildren(fragment);
+    }
+
+    function classForTag(tag) {
+      if (tag === "#") return "wall";
+      if (tag === ".") return "goal";
+      if (tag === "$") return "box";
+      if (tag === "*") return "bomb";
+      if (tag === "@") return "car";
+      return "floor";
+    }
+
+    function updateOutputs(level, solution) {
+      current = { level, solution };
+      renderBoard(level.grid);
+      mapTextEl.value = serializeGrid(level.grid);
+      flatTextEl.value = flatGrid(level.grid);
+      metricPushes.textContent = solution.solved ? String(solution.pushes) : "0";
+      metricPulls.textContent = String(level.pullCount);
+      metricFloor.textContent = String(level.floorCount);
+      metricSeed.textContent = String(level.seed);
+      seedInput.value = String(level.seed);
+
+      statusEl.className = "status " + (solution.solved ? "good" : "warn");
+      statusEl.textContent = solution.solved
+        ? "验证通过：正向最少 " + solution.pushes + " 次推动可解，搜索状态 " + solution.states + "。"
+        : "验证未通过：" + solution.reason + " 已保留预览，可重新生成。";
+    }
+
+    function generateLevel() {
+      const baseSeed = Number(seedInput.value) || randomSeed();
+      const options = {
+        seed: baseSeed,
+        boxCount: Number(boxCountEl.value),
+        pullSteps: Number(pullStepsEl.value),
+        extraCarve: Number(extraCarveEl.value),
+        minPushes: Number(minPushesEl.value) || 1,
+        bombCount: Number(bombCountEl.value) || 0
+      };
+
+      let best = null;
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const attemptOptions = { ...options, seed: baseSeed + attempt };
+        const level = buildGeneratedLevel(attemptOptions);
+        const solution = solveLevel(level.grid);
+        if (!best || solution.pushes > best.solution.pushes) {
+          best = { level, solution };
+        }
+        if (solution.solved && solution.pushes >= options.minPushes) {
+          updateOutputs(level, solution);
+          return;
+        }
+      }
+
+      updateOutputs(best.level, best.solution);
+      statusEl.className = "status warn";
+      statusEl.textContent = best.solution.solved
+        ? "已生成可解地图，但最少推动数只有 " + best.solution.pushes + "，低于当前要求。"
+        : "尝试 80 个种子后未找到满足条件的地图，可降低箱子数量、炸弹数量或最少推动数。";
+    }
+
+    function validateCurrent() {
+      const parsed = parseMapText(mapTextEl.value);
+      if (!parsed.ok) {
+        statusEl.className = "status warn";
+        statusEl.textContent = parsed.error;
+        return;
+      }
+      const solution = solveLevel(parsed.grid);
+      updateOutputs({
+        grid: parsed.grid,
+        seed: Number(seedInput.value) || 0,
+        goals: [],
+        boxes: [],
+        player: null,
+        pullCount: current ? current.level.pullCount : 0,
+        floorCount: parsed.grid.flat().filter((tag) => tag !== "#").length
+      }, solution);
+    }
+
+    function parseMapText(text) {
+      const rows = text.replace(/\r/g, "").trim().split("\n");
+      if (rows.length !== ROWS) {
+        return { ok: false, error: "地图必须正好 12 行。" };
+      }
+      const grid = rows.map((row) => row.split(""));
+      for (let r = 0; r < ROWS; r += 1) {
+        if (grid[r].length !== COLS) {
+          return { ok: false, error: "第 " + (r + 1) + " 行不是 16 列。" };
+        }
+        for (const tag of grid[r]) {
+          if (!"#-.$*@".includes(tag)) {
+            return { ok: false, error: "地图包含不支持的字符：" + tag };
+          }
+        }
+      }
+      return { ok: true, grid };
+    }
+
+    async function copyText(value, label) {
+      try {
+        await navigator.clipboard.writeText(value);
+        statusEl.className = "status good";
+        statusEl.textContent = label + "已复制。";
+      } catch (error) {
+        statusEl.className = "status warn";
+        statusEl.textContent = "浏览器不允许直接复制，请手动选中文本。";
+      }
+    }
+
+    document.getElementById("generateBtn").addEventListener("click", generateLevel);
+    document.getElementById("validateBtn").addEventListener("click", validateCurrent);
+    document.getElementById("copyMapBtn").addEventListener("click", () => copyText(mapTextEl.value, "12×16 地图"));
+    document.getElementById("copyFlatBtn").addEventListener("click", () => copyText(flatTextEl.value, "一行格式"));
+
+    seedInput.value = String(randomSeed());
+    // 新版增量生成器在下一个脚本中接管初始生成和按钮事件。
+  </script>
+  <script>
+    (() => {
+      const H = 12;
+      const W = 16;
+      const DIRECTIONS = [
+        { dr: -1, dc: 0 },
+        { dr: 1, dc: 0 },
+        { dr: 0, dc: -1 },
+        { dr: 0, dc: 1 }
+      ];
+
+      const els = {
+        board: document.getElementById("board"),
+        seed: document.getElementById("seedInput"),
+        boxes: document.getElementById("boxCount"),
+        iterations: document.getElementById("pullSteps"),
+        wallChance: document.getElementById("extraCarve"),
+        minPushes: document.getElementById("minPushes"),
+        bombs: document.getElementById("bombCount"),
+        mapText: document.getElementById("mapText"),
+        flatText: document.getElementById("flatText"),
+        status: document.getElementById("status"),
+        pushes: document.getElementById("metricPushes"),
+        saved: document.getElementById("metricPulls"),
+        floor: document.getElementById("metricFloor"),
+        seedMetric: document.getElementById("metricSeed")
+      };
+
+      let latest = null;
+
+      function replaceButton(id, handler) {
+        const oldButton = document.getElementById(id);
+        const button = oldButton.cloneNode(true);
+        oldButton.replaceWith(button);
+        button.addEventListener("click", handler);
+      }
+
+      function makeSeed() {
+        return Math.floor(Math.random() * 2147483645) + 1;
+      }
+
+      function rngFromSeed(seed) {
+        let state = seed % 2147483647;
+        if (state <= 0) state += 2147483646;
+        return () => {
+          state = (state * 16807) % 2147483647;
+          return (state - 1) / 2147483646;
+        };
+      }
+
+      function posKey(r, c) {
+        return r + "," + c;
+      }
+
+      function inside(r, c) {
+        return r > 0 && r < H - 1 && c > 0 && c < W - 1;
+      }
+
+      function cloneGrid(grid) {
+        return grid.map((row) => row.slice());
+      }
+
+      function shuffle(list, rng) {
+        const result = list.slice();
+        for (let i = result.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(rng() * (i + 1));
+          const temp = result[i];
+          result[i] = result[j];
+          result[j] = temp;
+        }
+        return result;
+      }
+
+      function weightedPick(items, rng) {
+        const total = items.reduce((sum, item) => sum + item.weight, 0);
+        if (total <= 0) return null;
+        let value = rng() * total;
+        for (const item of items) {
+          value -= item.weight;
+          if (value <= 0) return item;
+        }
+        return items[items.length - 1] || null;
+      }
+
+      function createBaseGrid(rng) {
+        const grid = Array.from({ length: H }, (_, r) =>
+          Array.from({ length: W }, (_, c) => (r === 0 || c === 0 || r === H - 1 || c === W - 1 ? "#" : "-"))
+        );
+        const player = weightedPick(interiorFloorCandidates(grid, rng), rng);
+        grid[player.r][player.c] = "@";
+        return grid;
+      }
+
+      function interiorFloorCandidates(grid) {
+        const centerR = Math.floor(H / 2);
+        const centerC = Math.floor(W / 2);
+        const maxDistance = Math.floor((W + H) / 2);
+        const candidates = [];
+
+        for (let r = 1; r < H - 1; r += 1) {
+          for (let c = 1; c < W - 1; c += 1) {
+            if (grid[r][c] !== "-") continue;
+            const distance = Math.abs(r - centerR) + Math.abs(c - centerC);
+            let weight = 1;
+            if (distance < maxDistance * 0.25) weight = 0.7;
+            if (distance > maxDistance * 0.75) weight = 0.55;
+            candidates.push({ r, c, weight });
+          }
+        }
+
+        return candidates.length ? candidates : [{ r: 1, c: 1, weight: 1 }];
+      }
+
+      function countNear(grid, r, c, radius, tags) {
+        let count = 0;
+        for (let y = Math.max(0, r - radius); y <= Math.min(H - 1, r + radius); y += 1) {
+          for (let x = Math.max(0, c - radius); x <= Math.min(W - 1, c + radius); x += 1) {
+            if (y === r && x === c) continue;
+            if (tags.includes(grid[y][x])) count += 1;
+          }
+        }
+        return count;
+      }
+
+      function generateWall(grid, rng) {
+        const candidates = [];
+        for (let r = 1; r < H - 1; r += 1) {
+          for (let c = 1; c < W - 1; c += 1) {
+            if (grid[r][c] !== "-") continue;
+            let weight = 1;
+            const borderDistance = Math.min(r - 1, c - 1, H - 2 - r, W - 2 - c);
+            if (borderDistance <= 1) weight *= 1.5;
+            if (borderDistance >= 3) weight *= 0.75;
+
+            const nearWalls = countNear(grid, r, c, 1, ["#"]);
+            if (nearWalls >= 3) weight *= 0.25;
+            else if (nearWalls >= 1) weight *= 1.3;
+
+            const nearObjects = countNear(grid, r, c, 1, ["@", "$", "."]);
+            if (nearObjects > 0) weight *= 0.45;
+
+            if (wouldCreateTinyPocket(grid, r, c)) weight *= 0.15;
+            candidates.push({ r, c, weight });
+          }
+        }
+
+        const chosen = weightedPick(candidates, rng);
+        if (!chosen) return false;
+        grid[chosen.r][chosen.c] = "#";
+        return true;
+      }
+
+      function wouldCreateTinyPocket(grid, r, c) {
+        let passable = 0;
+        for (const dir of DIRECTIONS) {
+          const nr = r + dir.dr;
+          const nc = c + dir.dc;
+          if (inside(nr, nc) && grid[nr][nc] !== "#") passable += 1;
+        }
+        return passable <= 1;
+      }
+
+      function generateBoxAndGoal(grid, rng) {
+        const boxCandidates = [];
+        const centerR = Math.floor(H / 2);
+        const centerC = Math.floor(W / 2);
+        const maxDistance = Math.floor((W + H) / 2);
+
+        for (let r = 1; r < H - 1; r += 1) {
+          for (let c = 1; c < W - 1; c += 1) {
+            if (grid[r][c] !== "-") continue;
+            if (isSimpleCorner(grid, r, c)) continue;
+            const distance = Math.abs(r - centerR) + Math.abs(c - centerC);
+            let weight = distance < maxDistance * 0.3 || distance > maxDistance * 0.75 ? 0.65 : 1;
+            const nearObjects = countNear(grid, r, c, 2, ["$", "."]);
+            if (nearObjects > 2) weight *= 0.25;
+            else if (nearObjects > 0) weight *= 0.7;
+            boxCandidates.push({ r, c, weight });
+          }
+        }
+
+        const box = weightedPick(boxCandidates, rng);
+        if (!box) return false;
+        grid[box.r][box.c] = "$";
+
+        const directedGoals = [];
+        for (const dir of shuffle(DIRECTIONS, rng)) {
+          const standR = box.r - dir.dr;
+          const standC = box.c - dir.dc;
+          if (!inside(standR, standC) || grid[standR][standC] === "#") continue;
+
+          for (const distance of shuffle([2, 3, 4, 5], rng)) {
+            const gr = box.r + dir.dr * distance;
+            const gc = box.c + dir.dc * distance;
+            if (!inside(gr, gc) || grid[gr][gc] !== "-") continue;
+
+            let clearLine = true;
+            for (let step = 1; step < distance; step += 1) {
+              const cr = box.r + dir.dr * step;
+              const cc = box.c + dir.dc * step;
+              if (!inside(cr, cc) || grid[cr][cc] !== "-") {
+                clearLine = false;
+                break;
+              }
+            }
+            if (clearLine) {
+              directedGoals.push({
+                r: gr,
+                c: gc,
+                weight: 1.6 - Math.abs(distance - 3) * 0.2
+              });
+            }
+          }
+        }
+
+        const directedGoal = weightedPick(directedGoals, rng);
+        if (directedGoal) {
+          grid[directedGoal.r][directedGoal.c] = ".";
+          return true;
+        }
+
+        const goalCandidates = [];
+        for (let r = 1; r < H - 1; r += 1) {
+          for (let c = 1; c < W - 1; c += 1) {
+            if (grid[r][c] !== "-") continue;
+            const distance = Math.abs(r - box.r) + Math.abs(c - box.c);
+            let weight = 1;
+            if (distance < 2) weight *= 0.25;
+            else if (distance <= 5) weight *= 1.4;
+            else weight *= Math.max(0.35, 1 - (distance - 5) * 0.08);
+
+            if (countNear(grid, r, c, 2, ["."]) > 0) weight *= 0.45;
+            if (countNear(grid, r, c, 1, ["#"]) >= 3) weight *= 0.25;
+            goalCandidates.push({ r, c, weight });
+          }
+        }
+
+        const goal = weightedPick(goalCandidates, rng);
+        if (!goal) {
+          grid[box.r][box.c] = "-";
+          return false;
+        }
+        grid[goal.r][goal.c] = ".";
+        return true;
+      }
+
+      function isSimpleCorner(grid, r, c) {
+        const wallUp = grid[r - 1][c] === "#";
+        const wallDown = grid[r + 1][c] === "#";
+        const wallLeft = grid[r][c - 1] === "#";
+        const wallRight = grid[r][c + 1] === "#";
+        return (wallUp || wallDown) && (wallLeft || wallRight);
+      }
+
+      function countTags(grid, tags) {
+        let count = 0;
+        for (const row of grid) {
+          for (const tag of row) {
+            if (tags.includes(tag)) count += 1;
+          }
+        }
+        return count;
+      }
+
+      function solve(grid, maxStates = 900) {
+        const walls = new Set();
+        const goals = new Set();
+        const boxes = [];
+        let player = null;
+
+        for (let r = 0; r < H; r += 1) {
+          for (let c = 0; c < W; c += 1) {
+            const tag = grid[r][c];
+            if (tag === "#" || tag === "*") walls.add(posKey(r, c));
+            if (tag === ".") goals.add(posKey(r, c));
+            if (tag === "$") boxes.push({ r, c });
+            if (tag === "@") player = { r, c };
+          }
+        }
+
+        if (!boxes.length) return { solved: true, pushes: 0, states: 1 };
+        if (!player || boxes.length !== goals.size) {
+          return { solved: false, pushes: 0, states: 0, reason: "箱子、目标点或小车数量不合法。" };
+        }
+
+        const start = {
+          player,
+          boxes,
+          pushes: 0
+        };
+        const queue = [start];
+        const visited = new Set([stateKey(start.player, start.boxes)]);
+        let head = 0;
+
+        while (head < queue.length && visited.size <= maxStates) {
+          const state = queue[head++];
+          if (state.boxes.every((box) => goals.has(posKey(box.r, box.c)))) {
+            return { solved: true, pushes: state.pushes, states: visited.size };
+          }
+
+          const boxKeys = new Set(state.boxes.map((box) => posKey(box.r, box.c)));
+          const reachable = flood(state.player, walls, boxKeys);
+          const nextStates = [];
+
+          for (let i = 0; i < state.boxes.length; i += 1) {
+            const box = state.boxes[i];
+            for (const dir of DIRECTIONS) {
+              const stand = { r: box.r - dir.dr, c: box.c - dir.dc };
+              const target = { r: box.r + dir.dr, c: box.c + dir.dc };
+              const standKey = posKey(stand.r, stand.c);
+              const targetKey = posKey(target.r, target.c);
+              if (!reachable.has(standKey)) continue;
+              if (!inside(target.r, target.c) || walls.has(targetKey) || boxKeys.has(targetKey)) continue;
+
+              const nextBoxes = state.boxes.map((item, index) => index === i ? target : item);
+              if (hasDeadlock(nextBoxes, walls, goals)) continue;
+              const key = stateKey(box, nextBoxes);
+              if (visited.has(key)) continue;
+
+              visited.add(key);
+              nextStates.push({ player: { r: box.r, c: box.c }, boxes: nextBoxes, pushes: state.pushes + 1 });
+            }
+          }
+
+          nextStates.sort((a, b) => heuristic(a.boxes, goals) - heuristic(b.boxes, goals));
+          queue.push(...nextStates);
+        }
+
+        return {
+          solved: false,
+          pushes: 0,
+          states: visited.size,
+          reason: visited.size > maxStates ? "达到搜索上限。" : "未找到解。"
+        };
+      }
+
+      function stateKey(player, boxes) {
+        return posKey(player.r, player.c) + "|" + boxes
+          .map((box) => posKey(box.r, box.c))
+          .sort()
+          .join(";");
+      }
+
+      function flood(start, walls, boxes) {
+        const seen = new Set([posKey(start.r, start.c)]);
+        const queue = [start];
+        let head = 0;
+
+        while (head < queue.length) {
+          const cell = queue[head++];
+          for (const dir of DIRECTIONS) {
+            const nr = cell.r + dir.dr;
+            const nc = cell.c + dir.dc;
+            const key = posKey(nr, nc);
+            if (!inside(nr, nc) || seen.has(key) || walls.has(key) || boxes.has(key)) continue;
+            seen.add(key);
+            queue.push({ r: nr, c: nc });
+          }
+        }
+
+        return seen;
+      }
+
+      function heuristic(boxes, goals) {
+        const goalList = Array.from(goals).map((value) => {
+          const parts = value.split(",");
+          return { r: Number(parts[0]), c: Number(parts[1]) };
+        });
+        return boxes.reduce((sum, box) => {
+          let best = Infinity;
+          for (const goal of goalList) {
+            best = Math.min(best, Math.abs(box.r - goal.r) + Math.abs(box.c - goal.c));
+          }
+          return sum + best;
+        }, 0);
+      }
+
+      function hasDeadlock(boxes, walls, goals) {
+        const boxSet = new Set(boxes.map((box) => posKey(box.r, box.c)));
+        for (const box of boxes) {
+          const boxKey = posKey(box.r, box.c);
+          if (goals.has(boxKey)) continue;
+          const up = walls.has(posKey(box.r - 1, box.c));
+          const down = walls.has(posKey(box.r + 1, box.c));
+          const left = walls.has(posKey(box.r, box.c - 1));
+          const right = walls.has(posKey(box.r, box.c + 1));
+          if ((up || down) && (left || right)) return true;
+        }
+
+        for (let r = 0; r < H - 1; r += 1) {
+          for (let c = 0; c < W - 1; c += 1) {
+            const cells = [posKey(r, c), posKey(r + 1, c), posKey(r, c + 1), posKey(r + 1, c + 1)];
+            const blocked = cells.filter((value) => walls.has(value) || boxSet.has(value)).length;
+            const looseBoxes = cells.filter((value) => boxSet.has(value) && !goals.has(value)).length;
+            const goalCount = cells.filter((value) => goals.has(value)).length;
+            if (blocked === 4 && looseBoxes > goalCount) return true;
+          }
+        }
+
+        return false;
+      }
+
+      function evaluate(grid, solution, targetMinPushes) {
+        const wallCount = countTags(grid, ["#"]);
+        const innerWalls = wallCount - (2 * W + 2 * (H - 2));
+        const innerTiles = (W - 2) * (H - 2);
+        const wallDensity = innerWalls / innerTiles;
+        const wallScore = wallDensity < 0.1 ? 0.3 : wallDensity <= 0.6 ? 0.5 + wallDensity / 0.6 * 0.5 : Math.max(0.35, 1 - (wallDensity - 0.6) * 2);
+        const pushScore = Math.min(1, solution.pushes / Math.max(1, targetMinPushes * 2));
+        const spatialScore = spatialDistribution(grid);
+        return pushScore * 0.45 + spatialScore * 0.3 + wallScore * 0.25;
+      }
+
+      function spatialDistribution(grid) {
+        const boxes = [];
+        const goals = [];
+        for (let r = 1; r < H - 1; r += 1) {
+          for (let c = 1; c < W - 1; c += 1) {
+            if (grid[r][c] === "$") boxes.push({ r, c });
+            if (grid[r][c] === ".") goals.push({ r, c });
+          }
+        }
+        if (!boxes.length || !goals.length) return 0;
+        const spread = (items) => {
+          if (items.length <= 1) return 1;
+          let total = 0;
+          let pairs = 0;
+          for (let i = 0; i < items.length; i += 1) {
+            for (let j = i + 1; j < items.length; j += 1) {
+              total += Math.abs(items[i].r - items[j].r) + Math.abs(items[i].c - items[j].c);
+              pairs += 1;
+            }
+          }
+          return Math.min(1, (total / pairs) / ((W + H - 2) * 0.45));
+        };
+        const separation = boxes.reduce((sum, box) => {
+          let best = Infinity;
+          for (const goal of goals) best = Math.min(best, Math.abs(box.r - goal.r) + Math.abs(box.c - goal.c));
+          return sum + best;
+        }, 0) / boxes.length;
+        return spread(boxes) * 0.35 + spread(goals) * 0.35 + Math.min(1, separation / 6) * 0.3;
+      }
+
+      function generateIncremental(options) {
+        const rng = rngFromSeed(options.seed);
+        let grid = createBaseGrid(rng);
+        let savedGrid = cloneGrid(grid);
+        let savedCount = 0;
+        let best = null;
+        const minInnerWalls = Math.floor((W - 2) * (H - 2) * 0.15);
+        const maxInnerWalls = Math.floor((W - 2) * (H - 2) * 0.65);
+
+        const maxIterations = Math.min(options.iterations, 14);
+        for (let i = 0; i < maxIterations; i += 1) {
+          const before = cloneGrid(grid);
+          let changed = false;
+          const boxCount = countTags(grid, ["$"]);
+          const innerWalls = countTags(grid, ["#"]) - (2 * W + 2 * (H - 2));
+
+          if (boxCount < options.boxes) {
+            changed = generateBoxAndGoal(grid, rng);
+          } else if (innerWalls < minInnerWalls || (innerWalls < maxInnerWalls && rng() < options.wallChance)) {
+            changed = generateWall(grid, rng);
+          } else if (rng() < 0.25) {
+            changed = generateBoxAndGoal(grid, rng);
+          } else {
+            changed = generateWall(grid, rng);
+          }
+
+          if (!changed) {
+            grid = before;
+            continue;
+          }
+
+          const solution = solve(grid);
+          if (!solution.solved || countTags(grid, ["$"]) > options.boxes) {
+            grid = cloneGrid(savedGrid);
+            continue;
+          }
+
+          savedGrid = cloneGrid(grid);
+          savedCount += 1;
+
+          if (countTags(grid, ["$"]) === options.boxes) {
+            const score = evaluate(grid, solution, options.minPushes);
+            if (!best || score > best.score || (Math.abs(score - best.score) < 0.02 && solution.pushes > best.solution.pushes)) {
+              best = { grid: cloneGrid(grid), solution, score, savedCount };
+            }
+            if (solution.pushes >= options.minPushes && savedCount >= options.boxes + 2) {
+              break;
+            }
+          }
+        }
+
+        if (!best) {
+          const solution = solve(savedGrid);
+          best = { grid: cloneGrid(savedGrid), solution, score: evaluate(savedGrid, solution, options.minPushes), savedCount };
+        }
+
+        const withBombs = placeBombs(best.grid, options.bombs, rng);
+        const finalSolution = solve(withBombs);
+        if (finalSolution.solved) {
+          best.grid = withBombs;
+          best.solution = finalSolution;
+        }
+
+        return best;
+      }
+
+      function placeBombs(grid, requested, rng) {
+        const result = cloneGrid(grid);
+        let placed = 0;
+        const candidates = [];
+        for (let r = 1; r < H - 1; r += 1) {
+          for (let c = 1; c < W - 1; c += 1) {
+            if (result[r][c] !== "-") continue;
+            if (countNear(result, r, c, 1, ["@", "$", "."]) > 0) continue;
+            candidates.push({ r, c });
+          }
+        }
+
+        for (const cell of shuffle(candidates, rng)) {
+          result[cell.r][cell.c] = "*";
+          const validation = solve(result);
+          if (validation.solved) {
+            placed += 1;
+            if (placed >= requested) break;
+          } else {
+            result[cell.r][cell.c] = "-";
+          }
+        }
+        return result;
+      }
+
+      function serialize(grid) {
+        return grid.map((row) => row.join("")).join("\n");
+      }
+
+      function render(grid) {
+        const fragment = document.createDocumentFragment();
+        for (let r = 0; r < H; r += 1) {
+          for (let c = 0; c < W; c += 1) {
+            const cell = document.createElement("div");
+            cell.className = "cell " + className(grid[r][c]);
+            cell.title = r + "," + c + " " + grid[r][c];
+            fragment.appendChild(cell);
+          }
+        }
+        els.board.replaceChildren(fragment);
+      }
+
+      function className(tag) {
+        if (tag === "#") return "wall";
+        if (tag === ".") return "goal";
+        if (tag === "$") return "box";
+        if (tag === "*") return "bomb";
+        if (tag === "@") return "car";
+        return "floor";
+      }
+
+      function updateUi(result, seed) {
+        latest = result;
+        render(result.grid);
+        els.mapText.value = serialize(result.grid);
+        els.flatText.value = serialize(result.grid).replace(/\n/g, "");
+        els.pushes.textContent = String(result.solution.pushes);
+        els.saved.textContent = String(result.savedCount);
+        els.floor.textContent = String(countTags(result.grid, ["-", ".", "$", "*", "@"]));
+        els.seedMetric.textContent = String(seed);
+        els.seed.value = String(seed);
+        els.status.className = result.solution.solved ? "status good" : "status warn";
+        els.status.textContent = result.solution.solved
+          ? "验证通过：增量生成保存 " + result.savedCount + " 次，最少 " + result.solution.pushes + " 次推动，质量分 " + result.score.toFixed(2) + "。"
+          : "验证未通过：" + (result.solution.reason || "未找到解。");
+      }
+
+      function runGenerate() {
+        const seed = Number(els.seed.value) || makeSeed();
+        const options = {
+          seed,
+          boxes: Number(els.boxes.value),
+          iterations: Number(els.iterations.value),
+          wallChance: Number(els.wallChance.value) / 100,
+          minPushes: Number(els.minPushes.value) || 1,
+          bombs: Number(els.bombs.value) || 0
+        };
+
+        let best = null;
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          const result = generateIncremental({ ...options, seed: seed + attempt });
+          if (!best || result.score > best.result.score || result.solution.pushes > best.result.solution.pushes) {
+            best = { result, seed: seed + attempt };
+          }
+          if (result.solution.solved && countTags(result.grid, ["$"]) === options.boxes && result.solution.pushes >= options.minPushes) {
+            updateUi(result, seed + attempt);
+            return;
+          }
+        }
+
+        updateUi(best.result, best.seed);
+        els.status.className = "status warn";
+        els.status.textContent += " 未达到当前最少推动数或箱子数量要求，已显示本轮最佳结果。";
+      }
+
+      function parseMap(value) {
+        const rows = value.replace(/\r/g, "").trim().split("\n");
+        if (rows.length !== H) return { ok: false, error: "地图必须正好 12 行。" };
+        const grid = rows.map((row) => row.split(""));
+        for (let r = 0; r < H; r += 1) {
+          if (grid[r].length !== W) return { ok: false, error: "第 " + (r + 1) + " 行不是 16 列。" };
+          for (const tag of grid[r]) {
+            if (!"#-.$*@".includes(tag)) return { ok: false, error: "地图包含不支持的字符：" + tag };
+          }
+        }
+        return { ok: true, grid };
+      }
+
+      function runValidate() {
+        const parsed = parseMap(els.mapText.value);
+        if (!parsed.ok) {
+          els.status.className = "status warn";
+          els.status.textContent = parsed.error;
+          return;
+        }
+        const solution = solve(parsed.grid);
+        updateUi({
+          grid: parsed.grid,
+          solution,
+          score: evaluate(parsed.grid, solution, Number(els.minPushes.value) || 1),
+          savedCount: latest ? latest.savedCount : 0
+        }, Number(els.seed.value) || 0);
+      }
+
+      async function copyText(value, label) {
+        try {
+          await navigator.clipboard.writeText(value);
+          els.status.className = "status good";
+          els.status.textContent = label + "已复制。";
+        } catch (error) {
+          els.status.className = "status warn";
+          els.status.textContent = "浏览器不允许直接复制，请手动选中文本。";
+        }
+      }
+
+      replaceButton("generateBtn", runGenerate);
+      replaceButton("validateBtn", runValidate);
+      replaceButton("copyMapBtn", () => copyText(els.mapText.value, "12x16 地图"));
+      replaceButton("copyFlatBtn", () => copyText(els.flatText.value, "一行格式"));
+
+      els.seed.value = els.seed.value || String(makeSeed());
+      runGenerate();
+    })();
+  </script>
+</body>
+</html>

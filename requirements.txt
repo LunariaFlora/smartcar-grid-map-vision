@@ -1,0 +1,11 @@
+# Desktop-side dependencies only.
+#
+# main.py and tracker.py run on the camera board under MicroPython and import
+# sensor / machine, which come from the board firmware, not from pip. They are
+# intentionally absent here.
+#
+# Only tools/crop_map.py and tools/detect_map.py need anything installed. They
+# use nothing beyond Image.open / convert / crop / getpixel / save, so the
+# version is not pinned to a narrow range.
+
+Pillow>=9.0
