@@ -399,3 +399,14 @@ More detail, including the measured reasoning behind each parameter, is in
   project.
 - Any team, event, or institution identifying information. Hardware model names appear only where they
   are needed to explain a firmware quirk.
+
+## Build log
+
+Work ran from 2026-07-08 to 2026-07-14, roughly forty commits in six days. The snapshot carries the end state, so the sequence is summarised here.
+
+- **Baseline (07-08).** Car and map vision brought together, multi-level recapture fixed, box-adjacent coordinate snapping restored.
+- **Simplification (07-10).** Dynamic map recognition reduced to what the game actually needs; tracker history reset between levels instead of leaking across them.
+- **Board module loading (07-11).** Module path fixed, then a storage fallback, then a revert once the fallback proved worse than a correct path.
+- **Near-box tracking (07-12).** Runtime map and level flow simplified, recovery improved where the car touches a box.
+- **Level tooling (07-13).** Standalone level generator page with solvability checking.
+- **Documentation (07-14).** Architecture and risk notes written down, tracker baseline frozen.
